@@ -21,7 +21,8 @@ public class RaceServiceImpl implements RaceService {
 
     @Override
     public Race findByName(String raceName) {
-        return raceRepository.findByName(raceName);
+        return raceRepository.findByName(raceName)
+                .orElseThrow(() -> new EntityNotFoundException("Race"));
     }
 
     @Override

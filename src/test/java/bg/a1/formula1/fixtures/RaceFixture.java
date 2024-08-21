@@ -12,6 +12,7 @@ public class RaceFixture {
         Race race = new Race();
         race.setId(1L);
         race.setName(RACE_NAME);
+        race.setHasFinished(false);
         race.setDriverRaces(new ArrayList<>());
 
         return race;

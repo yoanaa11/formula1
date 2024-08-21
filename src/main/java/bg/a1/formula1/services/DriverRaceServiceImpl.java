@@ -9,16 +9,19 @@ import bg.a1.formula1.services.contracts.DriverRaceService;
 import bg.a1.formula1.services.contracts.DriverService;
 import bg.a1.formula1.services.contracts.RaceService;
 import lombok.RequiredArgsConstructor;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 @RequiredArgsConstructor
 @Service
 public class DriverRaceServiceImpl implements DriverRaceService {
+
+    public static final int ZERO_FINISHED_TIME = 0;
+    public static final int MAX_POINTS = 19;
+    public static final int ZERO_POINTS = 0;
 
     private final DriverRaceRepository driverRaceRepository;
     private final DriverService driverService;
@@ -34,10 +37,8 @@ public class DriverRaceServiceImpl implements DriverRaceService {
         Driver driver = driverService.findById(driverId);
         Race race = raceService.findById(raceId);
 
-        for (DriverRaces driverRace : race.getDriverRaces()) {
-            if (driverRace.getPoints() != 0) {
-                throw new AlreadyFinishedException();
-            }
+        if (race.isHasFinished()) {
+            throw new AlreadyFinishedException();
         }
 
         boolean hasParticipated = race.getDriverRaces().stream()
@@ -50,7 +51,7 @@ public class DriverRaceServiceImpl implements DriverRaceService {
         DriverRaces driverRaces = new DriverRaces();
         driverRaces.setDriver(driver);
         driverRaces.setRace(race);
-        driverRaces.setPoints(0);
+        driverRaces.setPoints(ZERO_POINTS);
 
         driver.getDriverRaces().add(driverRaces);
         race.getDriverRaces().add(driverRaces);
@@ -59,88 +60,73 @@ public class DriverRaceServiceImpl implements DriverRaceService {
     }
 
     @Override
-    public void raceResults(long raceId, List<DriverRaces> driverRaces) {
+    public void raceResults(long raceId, List<DriverRaces> requestedDriverRaces) {
         Race race = raceService.findById(raceId);
-        List<DriverRaces> existingResults = race.getDriverRaces();
+        if (race.isHasFinished()) {
+            throw new AlreadyFinishedException();
+        }
 
-        List<DriverRaces> filteredAndValidatedResults = getFilteredAndValidatedList(driverRaces, race);
-
+        List<DriverRaces> filteredAndValidatedResults = getFilteredAndValidatedList(requestedDriverRaces, race);
         if (filteredAndValidatedResults.isEmpty()) {
             throw new EmptyRaceException(race.getName());
         }
 
-        results(filteredAndValidatedResults, existingResults, race);
+        List<DriverRaces> existingResults = race.getDriverRaces();
+        saveResults(filteredAndValidatedResults, existingResults, race);
+        race.setHasFinished(true);
     }
 
-    private List<DriverRaces> getFilteredAndValidatedList(List<DriverRaces> driverRaces, Race race) {
+    private List<DriverRaces> getFilteredAndValidatedList(List<DriverRaces> requestedDriverRaces, Race race) {
         List<Long> registeredDriversIds = race.getDriverRaces().stream()
                 .map(driverRace -> driverRace.getDriver().getId())
                 .toList();
 
-        isValidRequest(driverRaces, registeredDriversIds);
+        isValidRequest(requestedDriverRaces, registeredDriversIds);
 
-        return validList(driverRaces, race, registeredDriversIds);
+        return filteredList(requestedDriverRaces, race);
     }
 
-    private static void isValidRequest(List<DriverRaces> driverRaces, List<Long> registeredDriversIds) {
-        if (driverRaces.size() != registeredDriversIds.size()) {
+    private static void isValidRequest(List<DriverRaces> requestedDriverRaces, List<Long> registeredDriversIds) {
+        List<Long> driverRacesIds = requestedDriverRaces.stream()
+                .peek(driver -> {
+                    if (driver.getFinishedForInSeconds() <= ZERO_FINISHED_TIME) {
+                        throw new InvalidFinishedTimeException();
+                    }
+                })
+                .map(driverRace -> driverRace.getDriver().getId())
+                .toList();
+
+        if (!CollectionUtils.isEqualCollection(driverRacesIds, registeredDriversIds)) {
             throw new InvalidRequestException();
         }
-
-        Set<Long> driverIdsInRequest = new HashSet<>();
-        for (DriverRaces driverRace : driverRaces) {
-            long driverId = driverRace.getDriver().getId();
-            driverIdsInRequest.add(driverId);
-        }
-
-        if (driverIdsInRequest.size() != registeredDriversIds.size()) {
-            throw new DuplicateDriverException();
-        }
     }
 
-    private List<DriverRaces> validList(List<DriverRaces> driverRaces, Race race, List<Long> registeredDriversIds) {
-        return driverRaces.stream()
+    private List<DriverRaces> filteredList(List<DriverRaces> requestedDriverRaces, Race race) {
+        return requestedDriverRaces.stream()
                 .peek(driverRace -> {
                     long driverId = driverRace.getDriver().getId();
-
-                    if (!registeredDriversIds.contains(driverId)) {
-                        throw new EntityNotFoundException("Driver", String.valueOf(driverId));
-                    }
-
-                    race.getDriverRaces().stream()
-                            .filter(existingResult -> existingResult.getDriver().getId() == driverId)
-                            .findFirst()
-                            .ifPresent(existingResult -> {
-                                if (existingResult.getPoints() > 0) {
-                                    throw new AlreadyFinishedException();
-                                }
-                            });
 
                     driverRace.setRace(race);
 
                     Driver driver = driverService.findById(driverId);
                     driverRace.setDriver(driver);
-
-                    if (driverRace.getFinishedForInSeconds() == 0) {
-                        throw new InvalidFinishedTimeException();
-                    }
                 })
                 .sorted(Comparator.comparingDouble(DriverRaces::getFinishedForInSeconds))
                 .toList();
     }
 
-    private void results(List<DriverRaces> filteredAndValidatedResults, List<DriverRaces> existingResults, Race race) {
-        for (DriverRaces result : filteredAndValidatedResults) {
+    private void saveResults(List<DriverRaces> filteredAndValidatedResults, List<DriverRaces> existingResults, Race race) {
+        for (DriverRaces currentResult : filteredAndValidatedResults) {
             boolean isUpdated = false;
 
-            isUpdated = isUpdatedSuccessfully(existingResults, result, isUpdated);
+            isUpdated = isUpdatedSuccessfully(existingResults, currentResult, isUpdated);
 
             if (!isUpdated) {
                 DriverRaces newResult = new DriverRaces();
-                newResult.setDriver(result.getDriver());
+                newResult.setDriver(currentResult.getDriver());
                 newResult.setRace(race);
-                newResult.setFinishedForInSeconds(result.getFinishedForInSeconds());
-                int positionPoints = 20 - (filteredAndValidatedResults.indexOf(result) + 1);
+                newResult.setFinishedForInSeconds(currentResult.getFinishedForInSeconds());
+                int positionPoints = MAX_POINTS - filteredAndValidatedResults.indexOf(currentResult);
                 newResult.setPoints(positionPoints);
 
                 driverRaceRepository.save(newResult);
@@ -148,14 +134,18 @@ public class DriverRaceServiceImpl implements DriverRaceService {
         }
     }
 
-    private boolean isUpdatedSuccessfully(List<DriverRaces> existingResults, DriverRaces result, boolean isUpdated) {
+    private boolean isUpdatedSuccessfully(List<DriverRaces> existingResults, DriverRaces currentResult, boolean isUpdated) {
         for (DriverRaces existingResult : existingResults) {
-            if ((existingResult.getDriver().getId() == (result.getDriver().getId()))
-                    && existingResult.getRace().getId() == result.getRace().getId()) {
+            long existingResultDriverId = existingResult.getDriver().getId();
+            long currentResultDriverId = currentResult.getDriver().getId();
 
-                if (existingResult.getPoints() == 0) {
-                    existingResult.setFinishedForInSeconds(result.getFinishedForInSeconds());
-                    int positionPoints = 20 - (existingResults.indexOf(existingResult) + 1);
+            long existingResultRaceId = existingResult.getRace().getId();
+            long currentResultRaceId = currentResult.getRace().getId();
+
+            if ((existingResultDriverId == currentResultDriverId) && (existingResultRaceId == currentResultRaceId)) {
+                if (existingResult.getPoints() == ZERO_POINTS) {
+                    existingResult.setFinishedForInSeconds(currentResult.getFinishedForInSeconds());
+                    int positionPoints = MAX_POINTS - existingResults.indexOf(existingResult);
                     existingResult.setPoints(positionPoints);
 
                     driverRaceRepository.save(existingResult);

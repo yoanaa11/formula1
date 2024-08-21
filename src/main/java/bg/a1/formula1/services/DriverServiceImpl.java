@@ -16,6 +16,8 @@ import java.util.List;
 @Service
 public class DriverServiceImpl implements DriverService {
 
+    public static final int MAX_DRIVERS_PER_TEAM = 4;
+
     private final DriverRepository driverRepository;
     private final TeamService teamService;
 
@@ -34,7 +36,7 @@ public class DriverServiceImpl implements DriverService {
     public Driver create(Driver driver) {
         Team team = teamService.findByName(driver.getTeam().getName());
 
-        if (team.getDrivers().size() >= 4) {
+        if (team.getDrivers().size() >= MAX_DRIVERS_PER_TEAM) {
             throw new FullCapacityException(team.getName());
         }
 
@@ -48,7 +50,7 @@ public class DriverServiceImpl implements DriverService {
         Driver driver = findById(driverId);
         Team newTeam = teamService.findById(teamId);
 
-        if (newTeam.getDrivers().size() >= 4) {
+        if (newTeam.getDrivers().size() >= MAX_DRIVERS_PER_TEAM) {
             throw new FullCapacityException(newTeam.getName());
         }
 

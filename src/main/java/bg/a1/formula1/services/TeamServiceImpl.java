@@ -28,7 +28,8 @@ public class TeamServiceImpl implements TeamService {
 
     @Override
     public Team findByName(String name) {
-        return teamRepository.findByName(name);
+        return teamRepository.findByName(name)
+                .orElseThrow(() -> new EntityNotFoundException("Team"));
     }
 
     @Override

@@ -14,6 +14,7 @@ import org.mockito.MockitoAnnotations;
 import java.util.Optional;
 
 import static bg.a1.formula1.exceptions.utils.ExceptionMessages.ENTITY_NOT_FOUND_EXCEPTION;
+import static bg.a1.formula1.exceptions.utils.ExceptionMessages.ENTITY_WITH_NAME_NOT_FOUND_EXCEPTION;
 import static org.mockito.Mockito.*;
 
 public class TeamServiceImplTest {
@@ -59,13 +60,26 @@ public class TeamServiceImplTest {
     public void findByName_shouldReturnTeam() {
         Team team = TeamFixture.getTeam();
 
-        when(teamRepository.findByName("RedBull")).thenReturn(team);
+        when(teamRepository.findByName("RedBull")).thenReturn(Optional.of(team));
 
         Team foundTeam = teamService.findByName("RedBull");
 
         Assertions.assertNotNull(foundTeam);
         Assertions.assertEquals("RedBull", foundTeam.getName());
         verify(teamRepository, times(1)).findByName("RedBull");
+    }
+
+    @Test
+    public void findByName_shouldReturnNotFound() {
+        when(teamRepository.findByName("RedBull")).thenReturn(Optional.empty());
+
+        Exception entityNotFoundException = Assertions.assertThrows(EntityNotFoundException.class, () ->
+                teamService.findByName("RedBll"));
+
+        String expectedMessage = String.format(ENTITY_WITH_NAME_NOT_FOUND_EXCEPTION, "Team");
+        String actualMessage = entityNotFoundException.getMessage();
+
+        Assertions.assertEquals(actualMessage, expectedMessage);
     }
 
     @Test

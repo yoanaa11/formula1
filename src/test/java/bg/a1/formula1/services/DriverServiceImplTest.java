@@ -108,10 +108,13 @@ public class DriverServiceImplTest {
 
     @Test
     public void transferDriverToTeam_shouldThrowEntityNotFoundExceptionWhenDriverNotFound() {
-        when(driverRepository.findById(DriverFixture.getDriver().getId())).thenReturn(Optional.empty());
+        Driver driver = DriverFixture.getDriver();
+        Team team = TeamFixture.getTeam();
+
+        when(driverRepository.findById(driver.getId())).thenReturn(Optional.empty());
 
         Assertions.assertThrows(EntityNotFoundException.class, () ->
-                driverService.transferDriverToTeam(DriverFixture.getDriver().getId(), TeamFixture.getTeam().getId()));
+                driverService.transferDriverToTeam(driver.getId(), team.getId()));
         verify(driverRepository, never()).save(any(Driver.class));
     }
 

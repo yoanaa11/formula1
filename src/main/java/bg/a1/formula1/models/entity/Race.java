@@ -22,6 +22,9 @@ public class Race {
     @Column(name = "name", nullable = false, length = 20)
     private String name;
 
+    @Column(name = "has_finished")
+    private boolean hasFinished;
+
     @OneToMany(mappedBy = "race", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
     List<DriverRaces> driverRaces;

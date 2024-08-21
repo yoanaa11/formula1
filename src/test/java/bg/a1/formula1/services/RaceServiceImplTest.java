@@ -59,7 +59,7 @@ public class RaceServiceImplTest {
     public void findByName_shouldReturnRace() {
         Race race = RaceFixture.getRace();
 
-        when(raceRepository.findByName("Race1")).thenReturn(race);
+        when(raceRepository.findByName("Race1")).thenReturn(Optional.of(race));
 
         Race foundRace = raceService.findByName("Race1");
 

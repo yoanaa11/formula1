@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @Entity
-//@IdClass(DriverRaceId.class)
 @Table(name = "driver_races")
 public class DriverRaces {
 
@@ -43,16 +42,4 @@ public class DriverRaces {
                 ", points=" + points +
                 '}';
     }
-
-    //    @Override
-//    public String toString() {
-//        return "DriverRaces{" +
-//                "driverId=" + driverId +
-//                ", raceId=" + raceId +
-//                ", driver=" + driver +
-//                ", race=" + race +
-//                ", finishedForInSeconds=" + finishedForInSeconds +
-//                ", points=" + points +
-//                '}';
-//    }
 }

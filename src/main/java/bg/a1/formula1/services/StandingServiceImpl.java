@@ -16,6 +16,8 @@ import java.util.List;
 @Service
 public class StandingServiceImpl implements StandingService {
 
+    public static final String NO_TEAM = "No team";
+
     private final DriverService driverService;
     private final TeamService teamService;
     private final DriverRaceService driverRaceService;
@@ -37,7 +39,7 @@ public class StandingServiceImpl implements StandingService {
                             .mapToInt(DriverRaces::getPoints)
                             .sum();
 
-                    String teamName = driver.getTeam() != null ? driver.getTeam().getName() : "No team";
+                    String teamName = driver.getTeam() != null ? driver.getTeam().getName() : NO_TEAM;
 
                     return new DriverStandingDto(driver.getFirstName() + " " + driver.getLastName(), teamName, totalPoints);
                 })

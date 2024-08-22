@@ -14,6 +14,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RequiredArgsConstructor
 @Service
@@ -41,8 +44,7 @@ public class DriverRaceServiceImpl implements DriverRaceService {
             throw new AlreadyFinishedException();
         }
 
-        boolean hasParticipated = race.getDriverRaces().stream()
-                .anyMatch(driverRaces -> driverRaces.getDriver().equals(driver));
+        boolean hasParticipated = !driverRaceRepository.findByDriverIdAndRaceId(driverId, raceId).isEmpty();
 
         if (hasParticipated) {
             throw new DuplicateParticipationException("Driver", String.valueOf(driverId));
@@ -62,31 +64,32 @@ public class DriverRaceServiceImpl implements DriverRaceService {
     @Override
     public void raceResults(long raceId, List<DriverRaces> requestedDriverRaces) {
         Race race = raceService.findById(raceId);
+
+        List<DriverRaces> sortedAndValidatedResults = getSortedAndValidatedList(requestedDriverRaces, race);
+
+        race.setHasFinished(true);
+        assignPoints(sortedAndValidatedResults);
+        driverRaceRepository.saveAll(sortedAndValidatedResults);
+    }
+
+    private List<DriverRaces> getSortedAndValidatedList(List<DriverRaces> requestedDriverRaces, Race race) {
+        Map<Long, DriverRaces> registeredDriversIds = race.getDriverRaces().stream()
+                .collect(Collectors.toMap(driverRace -> driverRace.getDriver().getId(), driverRace -> driverRace));
+
+        isValidRequest(requestedDriverRaces, registeredDriversIds.keySet(), race);
+
+        return sortDriversByFinishTime(requestedDriverRaces, race, registeredDriversIds);
+    }
+
+    private static void isValidRequest(List<DriverRaces> requestedDriverRaces, Set<Long> registeredDriversIds, Race race) {
         if (race.isHasFinished()) {
             throw new AlreadyFinishedException();
         }
 
-        List<DriverRaces> filteredAndValidatedResults = getFilteredAndValidatedList(requestedDriverRaces, race);
-        if (filteredAndValidatedResults.isEmpty()) {
+        if (race.getDriverRaces().isEmpty()) {
             throw new EmptyRaceException(race.getName());
         }
 
-        List<DriverRaces> existingResults = race.getDriverRaces();
-        saveResults(filteredAndValidatedResults, existingResults, race);
-        race.setHasFinished(true);
-    }
-
-    private List<DriverRaces> getFilteredAndValidatedList(List<DriverRaces> requestedDriverRaces, Race race) {
-        List<Long> registeredDriversIds = race.getDriverRaces().stream()
-                .map(driverRace -> driverRace.getDriver().getId())
-                .toList();
-
-        isValidRequest(requestedDriverRaces, registeredDriversIds);
-
-        return filteredList(requestedDriverRaces, race);
-    }
-
-    private static void isValidRequest(List<DriverRaces> requestedDriverRaces, List<Long> registeredDriversIds) {
         List<Long> driverRacesIds = requestedDriverRaces.stream()
                 .peek(driver -> {
                     if (driver.getFinishedForInSeconds() <= ZERO_FINISHED_TIME) {
@@ -101,10 +104,13 @@ public class DriverRaceServiceImpl implements DriverRaceService {
         }
     }
 
-    private List<DriverRaces> filteredList(List<DriverRaces> requestedDriverRaces, Race race) {
+    private List<DriverRaces> sortDriversByFinishTime(List<DriverRaces> requestedDriverRaces, Race race,
+                                                      Map<Long, DriverRaces> registeredDriversIds) {
         return requestedDriverRaces.stream()
                 .peek(driverRace -> {
                     long driverId = driverRace.getDriver().getId();
+
+                    driverRace.setId(registeredDriversIds.get(driverId).getId());
 
                     driverRace.setRace(race);
 
@@ -115,46 +121,10 @@ public class DriverRaceServiceImpl implements DriverRaceService {
                 .toList();
     }
 
-    private void saveResults(List<DriverRaces> filteredAndValidatedResults, List<DriverRaces> existingResults, Race race) {
-        for (DriverRaces currentResult : filteredAndValidatedResults) {
-            boolean isUpdated = false;
-
-            isUpdated = isUpdatedSuccessfully(existingResults, currentResult, isUpdated);
-
-            if (!isUpdated) {
-                DriverRaces newResult = new DriverRaces();
-                newResult.setDriver(currentResult.getDriver());
-                newResult.setRace(race);
-                newResult.setFinishedForInSeconds(currentResult.getFinishedForInSeconds());
-                int positionPoints = MAX_POINTS - filteredAndValidatedResults.indexOf(currentResult);
-                newResult.setPoints(positionPoints);
-
-                driverRaceRepository.save(newResult);
-            }
-        }
-    }
-
-    private boolean isUpdatedSuccessfully(List<DriverRaces> existingResults, DriverRaces currentResult, boolean isUpdated) {
+    private void assignPoints(List<DriverRaces> existingResults) {
         for (DriverRaces existingResult : existingResults) {
-            long existingResultDriverId = existingResult.getDriver().getId();
-            long currentResultDriverId = currentResult.getDriver().getId();
-
-            long existingResultRaceId = existingResult.getRace().getId();
-            long currentResultRaceId = currentResult.getRace().getId();
-
-            if ((existingResultDriverId == currentResultDriverId) && (existingResultRaceId == currentResultRaceId)) {
-                if (existingResult.getPoints() == ZERO_POINTS) {
-                    existingResult.setFinishedForInSeconds(currentResult.getFinishedForInSeconds());
-                    int positionPoints = MAX_POINTS - existingResults.indexOf(existingResult);
-                    existingResult.setPoints(positionPoints);
-
-                    driverRaceRepository.save(existingResult);
-
-                    isUpdated = true;
-                }
-            }
+            int positionPoints = MAX_POINTS - existingResults.indexOf(existingResult);
+            existingResult.setPoints(positionPoints);
         }
-
-        return isUpdated;
     }
 }
